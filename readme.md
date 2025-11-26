@@ -1,6 +1,6 @@
 # MacLauncher - macOS 启动台替代品
 
-一个轻量、美观的 macOS 应用启动器，完美替代系统启动台。
+Mac 升级到 26 版本后，启动台没了，先写一个简单的用着。
 
 ![MacLauncher](docs/screenshots/main.png)
 ![MacLauncher](docs/screenshots/setting.png)
