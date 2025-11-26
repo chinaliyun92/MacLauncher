@@ -15,6 +15,10 @@ AppIcon.iconset/
 *.iconset/
 # 注意：AppIcon.png 应该提交到仓库
 
+# 文档截图（应该提交到仓库）
+# !docs/screenshots/*.png
+# !docs/screenshots/*.jpg
+
 # macOS
 .DS_Store
 .AppleDouble

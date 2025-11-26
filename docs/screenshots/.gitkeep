@@ -1,0 +1,6 @@
+# 将应用截图放在这个目录下
+# 支持的格式：.png, .jpg, .jpeg
+# 建议文件名：
+# - main.png (主界面)
+# - settings.png (设置界面)
+# - folder.png (文件夹展开)

@@ -176,6 +176,7 @@ struct ContentView: View {
                         .padding(.bottom, 50)
                     }
                     .scrollIndicators(.hidden)
+                    .background(ScrollViewHider()) // 添加背景监听器来强制隐藏滚动条
                     .blur(radius: (expandedFolderId != nil || showSettings) ? 10 : 0)
                     .disabled(expandedFolderId != nil || showSettings)
                 }
@@ -341,10 +342,29 @@ class WindowConfiguratorNSView: NSView {
         super.viewDidMoveToWindow()
         // 当视图被添加到窗口时，设置监听器并隐藏滚动条
         setupMonitor()
-        // 延迟一点执行以确保视图层级构建完成
+        // 立即隐藏，然后在多个时间点重复隐藏，确保滚动条被彻底隐藏
+        hideScrollbars()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             self.hideScrollbars()
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.hideScrollbars()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.hideScrollbars()
+        }
+        
+        // 监听窗口通知，在窗口更新时也隐藏滚动条
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidUpdate),
+            name: NSWindow.didUpdateNotification,
+            object: self.window
+        )
+    }
+    
+    @objc private func windowDidUpdate() {
+        hideScrollbars()
     }
     
     func setupMonitor() {
@@ -394,10 +414,24 @@ class WindowConfiguratorNSView: NSView {
     
     private func recursivelyHideScrollbars(in view: NSView) {
         if let scrollView = view as? NSScrollView {
+            // 强制隐藏滚动条
             scrollView.hasVerticalScroller = false
             scrollView.hasHorizontalScroller = false
             scrollView.scrollerStyle = .overlay
             scrollView.autohidesScrollers = true
+            
+            // 确保滚动条视图被移除
+            if let verticalScroller = scrollView.verticalScroller {
+                verticalScroller.isHidden = true
+                verticalScroller.alphaValue = 0
+            }
+            if let horizontalScroller = scrollView.horizontalScroller {
+                horizontalScroller.isHidden = true
+                horizontalScroller.alphaValue = 0
+            }
+            
+            // 设置滚动视图的边框样式，进一步隐藏滚动条
+            scrollView.borderType = .noBorder
         }
         for subview in view.subviews {
             recursivelyHideScrollbars(in: subview)
@@ -408,6 +442,7 @@ class WindowConfiguratorNSView: NSView {
         if let monitor = monitor {
             NSEvent.removeMonitor(monitor)
         }
+        NotificationCenter.default.removeObserver(self)
     }
 }
 
@@ -509,6 +544,46 @@ struct VisualEffectView: NSViewRepresentable {
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
         nsView.material = material
         nsView.blendingMode = blendingMode
+    }
+}
+
+// 滚动条隐藏器 - 持续监听并隐藏滚动条
+struct ScrollViewHider: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.setValue(NSColor.clear, forKey: "backgroundColor")
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        // 每次更新时都尝试隐藏滚动条
+        DispatchQueue.main.async {
+            if let window = nsView.window,
+               let contentView = window.contentView {
+                recursivelyHideScrollbars(in: contentView)
+            }
+        }
+    }
+    
+    private func recursivelyHideScrollbars(in view: NSView) {
+        if let scrollView = view as? NSScrollView {
+            scrollView.hasVerticalScroller = false
+            scrollView.hasHorizontalScroller = false
+            scrollView.scrollerStyle = .overlay
+            scrollView.autohidesScrollers = true
+            
+            if let verticalScroller = scrollView.verticalScroller {
+                verticalScroller.isHidden = true
+                verticalScroller.alphaValue = 0
+            }
+            if let horizontalScroller = scrollView.horizontalScroller {
+                horizontalScroller.isHidden = true
+                horizontalScroller.alphaValue = 0
+            }
+        }
+        for subview in view.subviews {
+            recursivelyHideScrollbars(in: subview)
+        }
     }
 }
 
