@@ -1,0 +1,50 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+
+# 打包产物
+MacLauncher.app/
+*.app
+*.dSYM
+
+# 临时文件和生成的文件
+AppIcon.icns
+AppIcon.iconset/
+*.iconset/
+# 注意：AppIcon.png 应该提交到仓库
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 用户配置和缓存
+*.swp
+*.swo
+*~
+.cache/
+
+# Xcode (如果使用)
+xcuserdata/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Package.swift 的构建缓存
+.swiftpm/config/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+
+# 编辑器
+.idea/
+.vscode/
+*.code-workspace
+
+# 环境变量和密钥
+.env
+*.pem
+*.key
+

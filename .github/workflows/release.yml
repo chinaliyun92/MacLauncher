@@ -1,0 +1,139 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送以 v 开头的 tag 时触发，例如 v1.0.0
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Swift
+      uses: swift-actions/setup-swift@v1
+      with:
+        swift-version: "5.9"
+    
+    - name: Build Release
+      run: |
+        swift build -c release -Xswiftc -O
+    
+    - name: Create App Bundle
+      run: |
+        APP_NAME="MacLauncher"
+        APP_BUNDLE="./${APP_NAME}.app"
+        CONTENTS="${APP_BUNDLE}/Contents"
+        MACOS="${CONTENTS}/MacOS"
+        RESOURCES="${CONTENTS}/Resources"
+        
+        mkdir -p "$MACOS" "$RESOURCES"
+        cp ".build/release/${APP_NAME}" "$MACOS/${APP_NAME}"
+        chmod +x "$MACOS/${APP_NAME}"
+        
+        # 如果有 AppIcon.png，生成图标（需要确保 AppIcon.png 已提交到仓库）
+        if [ -f "AppIcon.png" ]; then
+          echo "🎨 发现 AppIcon.png，正在生成应用图标..."
+          mkdir -p AppIcon.iconset
+          sips -z 16 16     AppIcon.png --out AppIcon.iconset/icon_16x16.png > /dev/null 2>&1
+          sips -z 32 32     AppIcon.png --out AppIcon.iconset/icon_16x16@2x.png > /dev/null 2>&1
+          sips -z 32 32     AppIcon.png --out AppIcon.iconset/icon_32x32.png > /dev/null 2>&1
+          sips -z 64 64     AppIcon.png --out AppIcon.iconset/icon_32x32@2x.png > /dev/null 2>&1
+          sips -z 128 128   AppIcon.png --out AppIcon.iconset/icon_128x128.png > /dev/null 2>&1
+          sips -z 256 256   AppIcon.png --out AppIcon.iconset/icon_128x128@2x.png > /dev/null 2>&1
+          sips -z 256 256   AppIcon.png --out AppIcon.iconset/icon_256x256.png > /dev/null 2>&1
+          sips -z 512 512   AppIcon.png --out AppIcon.iconset/icon_256x256@2x.png > /dev/null 2>&1
+          sips -z 512 512   AppIcon.png --out AppIcon.iconset/icon_512x512.png > /dev/null 2>&1
+          sips -z 1024 1024 AppIcon.png --out AppIcon.iconset/icon_512x512@2x.png > /dev/null 2>&1
+          
+          iconutil -c icns AppIcon.iconset
+          cp AppIcon.icns "$RESOURCES/" 2>/dev/null || true
+          rm -rf AppIcon.iconset AppIcon.icns
+        else
+          echo "⚠️ 未找到 AppIcon.png，跳过图标生成。"
+        fi
+        
+        # 创建 Info.plist
+        cat > "$CONTENTS/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>${APP_NAME}</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.local.${APP_NAME}</string>
+    <key>CFBundleName</key>
+    <string>${APP_NAME}</string>
+    <key>CFBundleDisplayName</key>
+    <string>启动台</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>需要权限来启动其他应用程序。</string>
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>
+EOF
+    
+    - name: Code Sign
+      run: |
+        codesign --force --deep --sign - MacLauncher.app
+    
+    - name: Create DMG (可选)
+      run: |
+        # 创建 DMG 文件（可选，如果需要）
+        DMG_NAME="MacLauncher.dmg"
+        hdiutil create -volname "MacLauncher" -srcfolder MacLauncher.app -ov -format UDZO "${DMG_NAME}"
+        echo "DMG_NAME=${DMG_NAME}" >> $GITHUB_ENV
+    
+    - name: Create ZIP archive
+      run: |
+        zip -r MacLauncher.zip MacLauncher.app
+        echo "ZIP_NAME=MacLauncher.zip" >> $GITHUB_ENV
+    
+    - name: Get version from tag
+      id: get_version
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/}
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+    
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: |
+          MacLauncher.zip
+        tag_name: ${{ steps.get_version.outputs.VERSION }}
+        name: Release ${{ steps.get_version.outputs.VERSION }}
+        body: |
+          ## MacLauncher ${{ steps.get_version.outputs.VERSION }}
+          
+          ### 下载
+          - 下载 `MacLauncher.zip` 并解压
+          - 将 `MacLauncher.app` 拖到 Applications 文件夹
+          
+          ### 使用
+          - 快捷键: **Control + Space** 唤起/隐藏
+          - 右键点击菜单栏图标可以退出
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
