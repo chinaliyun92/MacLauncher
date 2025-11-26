@@ -58,19 +58,19 @@ jobs:
         fi
         
         # 创建 Info.plist
-        cat > "$CONTENTS/Info.plist" <<EOF
+        cat > "$CONTENTS/Info.plist" <<'HEREDOC'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>${APP_NAME}</string>
+    <string>MacLauncher</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.local.${APP_NAME}</string>
+    <string>com.local.MacLauncher</string>
     <key>CFBundleName</key>
-    <string>${APP_NAME}</string>
+    <string>MacLauncher</string>
     <key>CFBundleDisplayName</key>
     <string>启动台</string>
     <key>CFBundlePackageType</key>
@@ -89,7 +89,7 @@ jobs:
     <true/>
 </dict>
 </plist>
-EOF
+HEREDOC
     
     - name: Code Sign
       run: |
