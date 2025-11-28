@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var editingFolderName: String = ""
     @State private var showSettings = false
     @State private var launchAtLogin: Bool = false
+    @State private var wasWindowHidden = true // 追踪窗口之前的隐藏状态
     
     // 从 UserDefaults 读取设置
     @AppStorage("customBackgroundColor") private var customBackgroundColor: String = "1,1,1"
@@ -279,14 +280,26 @@ struct ContentView: View {
                 await checkLaunchAtLoginStatus()
             }
         }
+        // 监听窗口显示事件 - 当窗口从隐藏状态变为显示时，清空搜索内容
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+            if let window = notification.object as? NSWindow,
+               window == NSApp.windows.first {
+                // 如果窗口之前是隐藏的，现在显示出来了，清空搜索内容
+                if wasWindowHidden && !showSettings {
+                    viewModel.searchText = ""
+                    wasWindowHidden = false
+                }
+            }
+        }
         // 监听窗口失去焦点事件（点击外部区域）
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { notification in
-            // 当窗口失去焦点时，隐藏窗口
             if let window = notification.object as? NSWindow,
-               window == NSApp.windows.first,
-               !showSettings,
-               expandedFolderId == nil {
-                NSApp.hide(nil)
+               window == NSApp.windows.first {
+                // 如果窗口失去焦点且不是因为有设置弹窗或展开的文件夹，隐藏窗口并标记状态
+                if !showSettings && expandedFolderId == nil {
+                    wasWindowHidden = true
+                    NSApp.hide(nil)
+                }
             }
         }
         // 核心修改：使用 NSViewRepresentable 注入按键监听，通过 Closure 回调处理
@@ -296,7 +309,8 @@ struct ContentView: View {
             } else if expandedFolderId != nil {
                 withAnimation { expandedFolderId = nil }
             } else {
-                // 确保隐藏逻辑只执行一次，并正确放弃焦点
+                // 标记窗口为隐藏状态，然后隐藏窗口
+                wasWindowHidden = true
                 NSApp.hide(nil)
                 // 隐藏后取消第一响应者，防止下次唤起时仍处于编辑状态
                 NSApp.windows.first?.makeFirstResponder(nil)

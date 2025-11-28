@@ -9,6 +9,9 @@ struct SettingsView: View {
     @AppStorage("customBackgroundColor") private var customBackgroundColor: String = "1,1,1" // RGB string (Default White)
     @AppStorage("backgroundOpacity") private var backgroundOpacity: Double = 0.3
     
+    // 内部状态，用于立即显示 Toggle
+    @State private var isCheckingStatus = false
+    
     // 预设颜色选项
     private let presetColors: [Color] = [
         .white,
@@ -51,11 +54,19 @@ struct SettingsView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(.secondary)
                         
-                        Toggle("开机自启动", isOn: $launchAtLogin)
-                            .toggleStyle(SwitchToggleStyle())
-                            .onChange(of: launchAtLogin) {
-                                updateLaunchAtLogin(enabled: launchAtLogin)
+                        LaunchAtLoginToggleView(
+                            isOn: $launchAtLogin,
+                            isCheckingStatus: $isCheckingStatus,
+                            onToggle: { enabled in
+                                updateLaunchAtLogin(enabled: enabled)
                             }
+                        )
+                        .id("launchAtLoginToggle") // 强制视图在设置弹窗显示时重新创建
+                        .frame(height: 22) // 明确设置高度
+                        .onAppear {
+                            // 设置弹窗显示时，立即同步检查状态
+                            checkLaunchAtLoginStatusImmediately()
+                        }
                         
                         HStack {
                             Text("全局快捷键")
@@ -191,5 +202,210 @@ struct SettingsView: View {
         return abs(currentColor.redComponent - targetColor.redComponent) < epsilon &&
                abs(currentColor.greenComponent - targetColor.greenComponent) < epsilon &&
                abs(currentColor.blueComponent - targetColor.blueComponent) < epsilon
+    }
+    
+    // 立即同步检查开机自启动状态（在主线程上执行）
+    private func checkLaunchAtLoginStatusImmediately() {
+        isCheckingStatus = true
+        // 在主线程上同步检查状态
+        let status = SMAppService.mainApp.status
+        launchAtLogin = (status == .enabled)
+        // 延迟一下再解除禁用状态，确保UI更新完成
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            self.isCheckingStatus = false
+        }
+    }
+}
+
+// MARK: - 自定义 Switch 控件
+struct LaunchAtLoginToggleView: NSViewRepresentable {
+    @Binding var isOn: Bool
+    @Binding var isCheckingStatus: Bool
+    var onToggle: (Bool) -> Void
+    
+    func makeNSView(context: Context) -> LaunchAtLoginContainerView {
+        let containerView = LaunchAtLoginContainerView()
+        containerView.setup(parent: context.coordinator, isOn: isOn, isEnabled: !isCheckingStatus)
+        context.coordinator.containerView = containerView
+        return containerView
+    }
+    
+    func updateNSView(_ nsView: LaunchAtLoginContainerView, context: Context) {
+        // 更新 Switch 状态
+        nsView.update(isOn: isOn, isEnabled: !isCheckingStatus)
+        context.coordinator.containerView = nsView
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    class Coordinator: NSObject {
+        var parent: LaunchAtLoginToggleView
+        var containerView: LaunchAtLoginContainerView?
+        var switchControl: NSSwitch? {
+            return containerView?.switchControl
+        }
+        
+        init(_ parent: LaunchAtLoginToggleView) {
+            self.parent = parent
+        }
+        
+        @objc func switchChanged(_ sender: NSSwitch) {
+            let newValue = sender.state == .on
+            parent.isOn = newValue
+            parent.onToggle(newValue)
+        }
+    }
+}
+
+// MARK: - 自定义容器视图
+class LaunchAtLoginContainerView: NSView {
+    private var stackView: NSStackView!
+    private var label: NSTextField!
+    var switchControl: NSSwitch!
+    private weak var coordinator: LaunchAtLoginToggleView.Coordinator?
+    
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupViews()
+    }
+    
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupViews()
+    }
+    
+    private func setupViews() {
+        translatesAutoresizingMaskIntoConstraints = false
+        
+        // 创建 HStack 布局
+        stackView = NSStackView()
+        stackView.orientation = .horizontal
+        stackView.alignment = .centerY
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        // 创建标签
+        label = NSTextField(labelWithString: "开机自启动")
+        label.font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        label.textColor = .labelColor
+        
+        // 创建 Switch
+        switchControl = NSSwitch()
+        switchControl.translatesAutoresizingMaskIntoConstraints = false
+        switchControl.frame = NSRect(x: 0, y: 0, width: 51, height: 31) // NSSwitch 的标准尺寸
+        switchControl.isHidden = false
+        switchControl.alphaValue = 1.0
+        
+        // 添加到 StackView
+        stackView.addArrangedSubview(label)
+        stackView.addArrangedSubview(NSView()) // Spacer
+        stackView.addArrangedSubview(switchControl)
+        
+        // 设置 Spacer 的优先级
+        if stackView.arrangedSubviews.count > 1 {
+            let spacer = stackView.arrangedSubviews[1]
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+        
+        addSubview(stackView)
+        
+        // 设置约束
+        NSLayoutConstraint.activate([
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stackView.topAnchor.constraint(equalTo: topAnchor),
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            heightAnchor.constraint(equalToConstant: 31), // Switch 的标准高度
+            switchControl.widthAnchor.constraint(equalToConstant: 51), // Switch 的标准宽度
+            switchControl.heightAnchor.constraint(equalToConstant: 31) // Switch 的标准高度
+        ])
+    }
+    
+    func setup(parent: LaunchAtLoginToggleView.Coordinator, isOn: Bool, isEnabled: Bool) {
+        self.coordinator = parent
+        switchControl.target = parent
+        switchControl.action = #selector(LaunchAtLoginToggleView.Coordinator.switchChanged(_:))
+        switchControl.state = isOn ? .on : .off
+        switchControl.isEnabled = isEnabled
+        
+        // 确保 Switch 控件可见
+        switchControl.isHidden = false
+        switchControl.alphaValue = 1.0
+        
+        // 确保视图在添加到窗口后能正确显示
+        needsLayout = true
+        needsDisplay = true
+    }
+    
+    func update(isOn: Bool, isEnabled: Bool) {
+        let newState: NSControl.StateValue = isOn ? .on : .off
+        if switchControl.state != newState {
+            switchControl.state = newState
+        }
+        switchControl.isEnabled = isEnabled
+        
+        // 强制刷新显示
+        needsDisplay = true
+        if let window = window {
+            window.displayIfNeeded()
+        }
+    }
+    
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        // 当视图被添加到窗口时，确保 Switch 正确显示
+        if window != nil {
+            // 强制布局更新
+            needsLayout = true
+            layoutSubtreeIfNeeded()
+            
+            // 立即标记需要显示，并强制更新
+            needsDisplay = true
+            stackView?.needsDisplay = true
+            switchControl?.needsDisplay = true
+            switchControl?.needsLayout = true
+            
+            // 强制窗口更新显示
+            window?.displayIfNeeded()
+            
+            // 延迟一点确保窗口已经完全设置好，再次强制更新
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
+                self.needsLayout = true
+                self.layoutSubtreeIfNeeded()
+                self.needsDisplay = true
+                self.stackView?.needsDisplay = true
+                self.switchControl?.needsDisplay = true
+                self.switchControl?.needsLayout = true
+                self.window?.displayIfNeeded()
+            }
+        }
+    }
+    
+    override func layout() {
+        super.layout()
+        // 确保布局完成后，所有视图都可见
+        switchControl?.isHidden = false
+        stackView?.isHidden = false
+    }
+    
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        // 在绘制前确保所有子视图都准备好了
+        stackView?.needsLayout = true
+        switchControl?.needsLayout = true
+        // 确保视图不被隐藏
+        switchControl?.isHidden = false
+        stackView?.isHidden = false
+    }
+    
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        // 确保子视图正确显示
+        stackView?.needsDisplay = true
+        switchControl?.needsDisplay = true
     }
 }
